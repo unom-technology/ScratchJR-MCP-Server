@@ -39,6 +39,35 @@ one-file change; nothing else hardcodes the name.
    window, which now hosts the chat panel instead of the editor.
 7. Adds Settings and About to the File menu, and the small windows they open.
 8. Publishes `global.scratchJrDebug` for `electronClient.js` to read from inside the webview.
+9. Adds **Save Project to Computer...** (Ctrl+S) and **Load Project from Computer...** (Ctrl+O) to
+   the File menu. This side owns the native save and open dialogs and the disk; the editor page
+   packs and unpacks the `.sjr` (see `src/app/src/desktop/ProjectFile.js` below). A loaded file is
+   refused before it reaches the page if it is over 64 MB or does not start with a zip header.
+
+### `.sjr` save and load (`src/app/src/iPad/IO.js`, `iOS.js`, `src/app/appEntry.js`, `src/app/src/desktop/ProjectFile.js`)
+
+Upstream ships the tablet sharing code but never runs it on the desktop: `shareEnabled` is `false`
+and `sendSjrUsingShareDialog` was never implemented. It had also stopped working, since it was
+written against JSZip 2 and `package.json` installs JSZip 3, which removed `load()`, `generate()`,
+`asText()` and `asBinary()`.
+
+- `IO.zipProject` generates with `generateAsync({type: 'base64'})`. It waits until the packed and
+  expected counts are equal rather than until their ratio is 1, which never happened for a project
+  with no assets. It skips the thumbnail of a project that has none yet, which is how the MCP
+  server's inserted projects start out.
+- `IO.loadProjectFromSjr` reads with `JSZip.loadAsync` and now returns a promise that settles
+  once the project row and every asset are stored. Each asset's save moved into
+  `IO.saveSjrAsset`, with the database calls unchanged. Assets are stored one at a time, and a
+  file with an empty name or extension is skipped instead of stalling the lobby refresh forever.
+- `IO.getImagesInSVG` calls back when an SVG has `xlink:href` but no `<image>`, and when an
+  embedded image fails to load; both used to leave the caller waiting for good.
+- `iOS.loadProjectFromSjr` reports errors from the promise.
+- `src/app/src/desktop/ProjectFile.js` (new) is the page half of the File menu entries. Saving
+  stops the scripts, saves the open project, packs it, and sends it to `main.js`. Loading saves
+  the open project first, then imports and goes to the lobby. It talks only to `window.tablet`,
+  like the rest of the app code.
+- `appEntry.js` calls `ProjectFile.listen(page)` once the Media Lib has loaded, because importing
+  needs `MediaLib.keys`.
 
 ### `src/app/settings.json`
 
@@ -73,6 +102,11 @@ The Settings and About dialogs, plus the stylesheet they share.
 ### `src/electronClient.js`
 
 `const DEBUG = remote.getCurrentWebContents().browserWindowOptions.isDebug` threw inside the webview, because a guest webContents carries no `browserWindowOptions`. It killed the script before `window.tablet` existed, which left the editor blank and the MCP server unable to do anything. The flag now falls back to `remote.getGlobal('scratchJrDebug')`, set in `main.js`.
+
+It also implements `sendSjrUsingShareDialog`, which sends the packed project to `main.js` to be saved
+instead of opening a tablet's share sheet. It adds `setProjectFileHandlers` and `projectFileResult`,
+and the `project-file-save` and `project-file-load` listeners that connect the File menu to
+`ProjectFile.js`.
 
 ### `package.json` and `forge.config.js`
 

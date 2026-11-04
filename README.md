@@ -34,6 +34,23 @@ It installs to `%LOCALAPPDATA%\ScratchJR-AI-Assisted\app-1.0.2\ScratchJr.exe`. P
 
 See **Installation Setup** below for how to build and install it. `desktop/UPSTREAM.md` records the upstream commit this copy came from and every modification made to it, so the changes can be re-applied to a newer upstream release.
 
+### Saving and loading projects on the computer
+
+ScratchJr keeps every project inside its own database, so on its own there is no file to copy to a USB stick, hand in to a teacher, or keep as a backup. The **File** menu adds two entries for that:
+
+| Menu entry | Shortcut | What it does |
+| --- | --- | --- |
+| **Save Project to Computer...** | Ctrl+S | Saves the project that is open in the editor, then asks where to put it as a `.sjr` file |
+| **Load Project from Computer...** | Ctrl+O | Asks for a `.sjr` file and adds it to **My Projects**, with a gift bow on it like a project shared from a tablet |
+
+A `.sjr` file is the archive ScratchJr's tablet apps use for sharing. It holds the project and any characters, backgrounds and recorded sounds made for it; built-in characters and backgrounds are left out, because every copy of ScratchJr already has them.
+
+- Loading never overwrites anything. A project whose name is already taken is numbered, so loading `Park Friends` twice gives `Park Friends 2` and `Park Friends 3`.
+- Loading from inside the editor saves the open project first, then goes to **My Projects** to show the new one.
+- Save needs a project open in the editor. The sample projects on the help page cannot be saved this way.
+- A file that is not a ScratchJr project, or is damaged, is refused with a message, and nothing is added.
+- Both dialogs start in the folder used last, or in Documents the first time.
+
 ### Using the stock app instead
 
 The server still works with an unmodified ScratchJr Desktop installation. It looks for the modified build first and falls back to `%LOCALAPPDATA%\ScratchJr\app-*\ScratchJr.exe`, so nothing needs to be uninstalled. With the stock app, the server must launch ScratchJr itself; if the app is already open, it will ask you to save and close it first.
@@ -495,7 +512,7 @@ Project writes use the running application's in-memory database, then explicitly
 
 `backups/` contains complete `.sqllite` snapshots. To restore manually, save and close ScratchJr, preserve a copy of the current database, replace `Documents\ScratchJR\scratchjr.sqllite` with the selected snapshot, and reopen ScratchJr. Restoring a full database restores all projects to that snapshot's state.
 
-`artifacts/` contains screenshots, JSON exports, and `live-test-result.json`. The JSON export includes referenced custom media and is intended for inspection/backup; it is **not** a tablet-importable `.sjr` archive. Automated import and recorded-audio creation are not implemented. Existing recorded sounds can be used in scripts.
+`artifacts/` contains screenshots, JSON exports, and `live-test-result.json`. The JSON export includes referenced custom media and is intended for inspection/backup; it is **not** a tablet-importable `.sjr` archive; for that, use **File > Save Project to Computer** in the bundled app. Automated import and recorded-audio creation are not implemented. Existing recorded sounds can be used in scripts.
 
 Tested against **ScratchJr Desktop 1.3.2 on Windows**, Node 24, MCP SDK 1.30.0, the installed Codex CLI, and Claude Code. Claude Desktop's configuration is installed, but its UI was not used for testing. Cursor and Antigravity instructions follow their official MCP documentation; connections from those editors have not been tested here. Other desktop builds may need an adapter.
 

@@ -128,6 +128,13 @@ export default class IO {
             }
             var images = IO.getImages(extxml, []);
             var imageCount = images.length;
+            // An xlink:href on something other than an <image> leaves nothing to
+            // wait for, and an image that fails to load never fires onload; both
+            // used to leave whenDone uncalled for good.
+            if (imageCount < 1) {
+                whenDone();
+                return;
+            }
             for (var i = 0; i < images.length; i++) {
                 var dataurl = images[i].getAttribute('xlink:href');
                 var svgimg = document.createElement('img');
@@ -136,6 +143,7 @@ export default class IO {
                     svgimg.onload = function () {
                         readToLad();
                     };
+                    svgimg.onerror = svgimg.onload;
                 } else {
                     readToLad();
                 }
@@ -339,8 +347,11 @@ export default class IO {
                 }
             };
 
-            // Project thumbnail
-            collectAsset('thumbnails', jsonData.thumbnail.md5);
+            // Project thumbnail. A project written straight into the database,
+            // as the MCP server does, has none until the editor next saves it.
+            if (jsonData.thumbnail) {
+                collectAsset('thumbnails', jsonData.thumbnail.md5);
+            }
 
             var projectData = jsonData.json;
 
@@ -445,11 +456,15 @@ export default class IO {
                 .replace(windowsTrailingRe, '_');
             shareName = jsonData.name;
 
+            // JSZip 3 only generates asynchronously; the 2.x generate() this was
+            // written against no longer exists. Comparing counts rather than
+            // dividing them also copes with a project that has no assets at all.
             function checkStatus () {
-                if ((zipAssetsActual / zipAssetsExpected) == 1) {
-                    finished(zipFile.generate({
+                if (zipAssetsActual == zipAssetsExpected) {
+                    zipFile.generateAsync({
+                        'type': 'base64',
                         'compression': 'STORE'
-                    }));
+                    }).then(finished);
                 } else {
                     setTimeout(checkStatus, 200);
                 }
@@ -518,33 +533,37 @@ export default class IO {
     }
 
     // Receive a base64-encoded zip from iOS (upon open a project)
+    //
+    // Returns a promise that settles once the project and every asset in the file
+    // are in the database, so the caller knows when it is safe to leave the page.
+    // JSZip 3 only reads archives asynchronously; the 2.x load(), asText() and
+    // asBinary() this was first written against no longer exist.
     static loadProjectFromSjr (b64data) {
-        // Together, these two provide a "progress" indication
-        // that lets us know when to refresh the lobby (when sE/sA = 1)
-        var saveExpected = 0; // How many assets we expect to save - updated as we process the zip
-        var saveActual = 0; // How many assets actually saved - updated as we make IO saves
-
-        var receivedZip = JSZip();
-        receivedZip.load(b64data, {
-            'base64': true
-        });
-
         // To store character MD5 -> character name map
         // The character name is stored in the project JSON; when we load
         // the actual SVG asset, we need the associated name for storage in the DB
         var characterNames = {};
 
-        // First find the data.json project file
-        
-        // REVIEW: this used to be recievedZip.filter but was never returning false to filter anything...  
-        // switching to forEach instead.
-        receivedZip.forEach(function (relativePath, file) { 
-            if (file.dir) {
-                return;
+        return JSZip.loadAsync(b64data, {
+            'base64': true
+        }).then(function (receivedZip) {
+            var files = [];
+            receivedZip.forEach(function (relativePath, file) {
+                if (!file.dir) {
+                    files.push(file);
+                }
+            });
+
+            // First find the data.json project file
+            var projectFile = files.filter(function (file) {
+                return file.name.split('/').pop() == 'data.json';
+            })[0];
+            if (!projectFile) {
+                throw new Error('There is no ScratchJr project inside this file.');
             }
-            var fullName = relativePath.split('/').pop();
-            if (fullName == 'data.json') {
-                var jsonData = JSON.parse(file.asText());
+
+            return projectFile.async('string').then(function (text) {
+                var jsonData = JSON.parse(text);
 
                 // To require an upgrade, change the major version numbers in .html files and here...
                 var currentVersion = 1;
@@ -553,11 +572,6 @@ export default class IO {
                 if (projectVersion > currentVersion) {
                     throw new Error('Project created in a new version of ScratchJr. Please upgrade ScratchJr.');
                 }
-
-                IO.uniqueProjectName(jsonData, function (jsonData) {
-                    jsonData.isgift = '1'; // Project will display with a bow and ribbon
-                    IO.createProject(jsonData, function () {});
-                });
 
                 // Build map of character filename -> character name
                 var projectData = jsonData.json;
@@ -575,149 +589,156 @@ export default class IO {
                         }
                     }
                 }
-            }
-        });
 
-        // Filter out each asset type for storage
-        // REVIEW: this used to be recievedZip.filter but was never returning false to filter anything...  
-        // switching to forEach instead.
-        receivedZip.forEach(function (relativePath, file) { 
-            if (file.dir) {
-                return;
-            }
-            saveExpected++; // We expect to save something for each non-directory
-
-            var subFolder = relativePath.split('/')[1]; // should be {backgrounds, characters, thumbnails, sounds}
-
-            // Filename processing
-            var fullName = relativePath.split('/').pop(); // e.g. Cat.svg
-            var name = fullName.split('.')[0]; // e.g. Cat
-            var ext = fullName.split('.').pop(); // e.g. svg
-
-            if (!name || !ext) {
-                return;
-            }
-
-            // Don't save items we already have in the MediaLib
-            if (fullName in MediaLib.keys) {
-                saveActual++;
-                return;
-            }
-
-            // File data and base64-encoded data
-            var data = file.asBinary();
-            var b2data = btoa(data);
-
-            if (subFolder == 'thumbnails' || subFolder == 'sounds') {
-                // Save these immediately to the filesystem - no additional processing necessary
-                iOS.setmedianame(b2data, name, ext, function () {
-                    saveActual++;
+                return new Promise(function (resolve) {
+                    IO.uniqueProjectName(jsonData, function (jsonData) {
+                        jsonData.isgift = '1'; // Project will display with a bow and ribbon
+                        IO.createProject(jsonData, resolve);
+                    });
                 });
-            } else if (subFolder == 'characters') {
-                // This code is messy - needs a refactor sometime for all the database calls/duplication for bkgs...
-
-                // Save the character, generate its thumbnail, and add entry to the database
-                iOS.setmedianame(b2data, name, ext, function () { // Saves the SVG
-                    // Parse SVG to determine width/height
-                    var svgParser = new DOMParser().parseFromString(data, 'text/xml');
-                    var width = svgParser.getElementsByTagName('svg')[0].width.baseVal.value;
-                    var height = svgParser.getElementsByTagName('svg')[0].height.baseVal.value;
-                    var scale = '0.5'; // fixed value - see PaintIO
-
-                    IO.getImagesInSVG(data, gotSVGImages);
-
-                    function gotSVGImages () {
-                        var thumbnailDataURL = IO.getThumbnail(data, width, height, 120, 90);
-
-                        var thumbnailPngBase64 = thumbnailDataURL.split(',')[1];
-
-                        var charName = characterNames[fullName];
-
-                        iOS.setmedia(thumbnailPngBase64, 'png', function (thumbnailMD5) {
-                            // Sprite thumbnail is saved - save character to the DB
-
-                            // First ensure that this character doesn't already exist in the exact form
-                            var json = {};
-                            json.cond = ('ext = ? AND md5 = ? AND altmd5 = ? AND name = ? ' +
-                                'AND scale = ? AND width = ? AND height = ?');
-                            json.items = ['*'];
-                            json.values = ['svg', fullName, thumbnailMD5,
-                                charName, scale, width.toString(), height.toString()];
-                            json.order = 'ctime desc';
-                            IO.query('usershapes', json, function (results) {
-                                results = JSON.parse(results);
-                                if (results.length == 0) {
-                                    // This character doesn't already exist - insert it
-                                    var json = {};
-                                    var keylist = ['scale', 'md5', 'altmd5',
-                                        'version', 'width', 'height', 'ext', 'name'];
-                                    var values = '?,?,?,?,?,?,?,?';
-                                    json.values = [scale, fullName, thumbnailMD5, 'iOSv01',
-                                        width.toString(), height.toString(), 'svg', charName];
-                                    json.stmt = 'insert into usershapes ('
-                                        + keylist.toString() + ') values (' + values + ')';
-
-                                    iOS.stmt(json, function () {
-                                        saveActual++;
-                                    });
-                                } else {
-                                    saveActual++;
-                                }
-                            });
-                        });
-                    }
-                });
-            } else if (subFolder == 'backgrounds') {
-                // Same idea as characters, but the dimensions are fixed
-                iOS.setmedianame(b2data, name, ext, function () {
-                    IO.getImagesInSVG(data, gotSVGImages);
-
-                    function gotSVGImages () {
-                        var thumbnailDataURL = IO.getThumbnail(data, 480, 360, 120, 90);
-                        var thumbnailPngBase64 = thumbnailDataURL.split(',')[1];
-                        iOS.setmedia(thumbnailPngBase64, 'png', function (thumbnailMD5) {
-
-                            // First ensure that this bg doesn't already exist in the exact form
-                            var json = {};
-                            json.cond = 'ext = ? AND md5 = ? AND altmd5 = ?';
-                            json.items = ['*'];
-                            json.values = ['svg', fullName, thumbnailMD5];
-                            json.order = 'ctime desc';
-                            IO.query('userbkgs', json, function (results) {
-                                results = JSON.parse(results);
-                                if (results.length == 0) {
-                                    // Background is unique, insert into the library
-                                    var json = {};
-                                    var keylist = ['md5', 'altmd5', 'version', 'width', 'height', 'ext'];
-                                    var values = '?,?,?,?,?,?';
-                                    json.values = [fullName, thumbnailMD5, 'iOSv01', '480', '360', 'svg'];
-                                    json.stmt = 'insert into userbkgs (' + keylist.toString() +
-                                        ') values (' + values + ')';
-                                    iOS.stmt(json, function () {
-                                        saveActual++;
-                                    });
-                                } else {
-                                    saveActual++;
-                                }
-                            });
-                        });
-                    }
-                });
-            } else {
-                saveActual++; // Ignore this file - someone messed with the SJR...
-            }
-        });
-
-        // For updating the Lobby UI - if we're on the lobby page when receiving a project, refresh it
-        function refreshLobby () {
+            }).then(function () {
+                // One asset at a time: characters and backgrounds are each drawn
+                // onto a canvas for their thumbnails.
+                return files.reduce(function (previous, file) {
+                    return previous.then(function () {
+                        return IO.saveSjrAsset(file, characterNames);
+                    });
+                }, Promise.resolve());
+            });
+        }).then(function () {
+            // For updating the Lobby UI - if we're on the lobby page when receiving a project, refresh it
             if (gn('hometab') !== null) { // Check if we're on the lobby page
-                if (saveActual == saveExpected) {
-                    Lobby.setPage('home');
-                } else { // Waiting for assets to be saved
-                    setTimeout(refreshLobby, 100);
-                }
+                Lobby.setPage('home');
             }
+        });
+    }
+
+    // Stores one file from an .sjr archive; the promise resolves once it is saved.
+    static saveSjrAsset (file, characterNames) {
+        var relativePath = file.name;
+        var subFolder = relativePath.split('/')[1]; // should be {backgrounds, characters, thumbnails, sounds}
+
+        // Filename processing
+        var fullName = relativePath.split('/').pop(); // e.g. Cat.svg
+        var name = fullName.split('.')[0]; // e.g. Cat
+        var ext = fullName.split('.').pop(); // e.g. svg
+
+        if (!name || !ext) {
+            return Promise.resolve();
         }
-        refreshLobby();
+
+        // Don't save items we already have in the MediaLib
+        if (fullName in MediaLib.keys) {
+            return Promise.resolve();
+        }
+
+        if (subFolder == 'thumbnails' || subFolder == 'sounds') {
+            // Save these immediately to the filesystem - no additional processing necessary
+            return file.async('base64').then(function (b2data) {
+                return new Promise(function (resolve) {
+                    iOS.setmedianame(b2data, name, ext, resolve);
+                });
+            });
+        }
+
+        if (subFolder != 'characters' && subFolder != 'backgrounds') {
+            return Promise.resolve(); // Ignore this file - someone messed with the SJR...
+        }
+
+        // File data and base64-encoded data
+        return Promise.all([file.async('string'), file.async('base64')]).then(function (contents) {
+            var data = contents[0];
+            var b2data = contents[1];
+
+            return new Promise(function (resolve) {
+                if (subFolder == 'characters') {
+                    // This code is messy - needs a refactor sometime for all the database calls/duplication for bkgs...
+
+                    // Save the character, generate its thumbnail, and add entry to the database
+                    iOS.setmedianame(b2data, name, ext, function () { // Saves the SVG
+                        // Parse SVG to determine width/height
+                        var svgParser = new DOMParser().parseFromString(data, 'text/xml');
+                        var width = svgParser.getElementsByTagName('svg')[0].width.baseVal.value;
+                        var height = svgParser.getElementsByTagName('svg')[0].height.baseVal.value;
+                        var scale = '0.5'; // fixed value - see PaintIO
+
+                        IO.getImagesInSVG(data, gotSVGImages);
+
+                        function gotSVGImages () {
+                            var thumbnailDataURL = IO.getThumbnail(data, width, height, 120, 90);
+
+                            var thumbnailPngBase64 = thumbnailDataURL.split(',')[1];
+
+                            var charName = characterNames[fullName];
+
+                            iOS.setmedia(thumbnailPngBase64, 'png', function (thumbnailMD5) {
+                                // Sprite thumbnail is saved - save character to the DB
+
+                                // First ensure that this character doesn't already exist in the exact form
+                                var json = {};
+                                json.cond = ('ext = ? AND md5 = ? AND altmd5 = ? AND name = ? ' +
+                                    'AND scale = ? AND width = ? AND height = ?');
+                                json.items = ['*'];
+                                json.values = ['svg', fullName, thumbnailMD5,
+                                    charName, scale, width.toString(), height.toString()];
+                                json.order = 'ctime desc';
+                                IO.query('usershapes', json, function (results) {
+                                    results = JSON.parse(results);
+                                    if (results.length == 0) {
+                                        // This character doesn't already exist - insert it
+                                        var json = {};
+                                        var keylist = ['scale', 'md5', 'altmd5',
+                                            'version', 'width', 'height', 'ext', 'name'];
+                                        var values = '?,?,?,?,?,?,?,?';
+                                        json.values = [scale, fullName, thumbnailMD5, 'iOSv01',
+                                            width.toString(), height.toString(), 'svg', charName];
+                                        json.stmt = 'insert into usershapes ('
+                                            + keylist.toString() + ') values (' + values + ')';
+
+                                        iOS.stmt(json, resolve);
+                                    } else {
+                                        resolve();
+                                    }
+                                });
+                            });
+                        }
+                    });
+                } else {
+                    // Same idea as characters, but the dimensions are fixed
+                    iOS.setmedianame(b2data, name, ext, function () {
+                        IO.getImagesInSVG(data, gotSVGImages);
+
+                        function gotSVGImages () {
+                            var thumbnailDataURL = IO.getThumbnail(data, 480, 360, 120, 90);
+                            var thumbnailPngBase64 = thumbnailDataURL.split(',')[1];
+                            iOS.setmedia(thumbnailPngBase64, 'png', function (thumbnailMD5) {
+
+                                // First ensure that this bg doesn't already exist in the exact form
+                                var json = {};
+                                json.cond = 'ext = ? AND md5 = ? AND altmd5 = ?';
+                                json.items = ['*'];
+                                json.values = ['svg', fullName, thumbnailMD5];
+                                json.order = 'ctime desc';
+                                IO.query('userbkgs', json, function (results) {
+                                    results = JSON.parse(results);
+                                    if (results.length == 0) {
+                                        // Background is unique, insert into the library
+                                        var json = {};
+                                        var keylist = ['md5', 'altmd5', 'version', 'width', 'height', 'ext'];
+                                        var values = '?,?,?,?,?,?';
+                                        json.values = [fullName, thumbnailMD5, 'iOSv01', '480', '360', 'svg'];
+                                        json.stmt = 'insert into userbkgs (' + keylist.toString() +
+                                            ') values (' + values + ')';
+                                        iOS.stmt(json, resolve);
+                                    } else {
+                                        resolve();
+                                    }
+                                });
+                            });
+                        }
+                    });
+                }
+            });
+        });
     }
 }

@@ -345,15 +345,14 @@ export default class iOS {
 
     // Called on the Objective-C side.  The argument is a base64-encoded .SJR file,
     // to be unzipped, processed, and stored.
+    // Reading the archive is asynchronous now, so a corrupt file is reported from
+    // the promise instead of making this return 0.
     static loadProjectFromSjr (b64data) {
-        try {
-            IO.loadProjectFromSjr(b64data);
-        } catch (err) {
+        IO.loadProjectFromSjr(b64data).catch(function (err) {
             var errorMessage = 'Couldn\'t load share -- project data corrupted. ' + err.message;
             Alert.open(gn('frame'), gn('frame'), errorMessage, '#ff0000');
             console.log(err); // eslint-disable-line no-console
-            return 0;
-        }
+        });
         return 1;
     }
 

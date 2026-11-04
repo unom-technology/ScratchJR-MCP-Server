@@ -4,6 +4,7 @@ import AppUsage from './src/utils/AppUsage.js';
 import iOS from './src/iPad/iOS.js';
 import IO from './src/iPad/IO.js';
 import MediaLib from './src/iPad/MediaLib.js';
+import ProjectFile from './src/desktop/ProjectFile.js';
 
 import {indexMain} from './src/entry/index.js';
 import {homeMain} from './src/entry/home.js';
@@ -107,6 +108,9 @@ function loadPage(page) {
 		Localization.includeLocales(root, () => {
 			// Load Media Lib from JSON
 			MediaLib.loadMediaLib(root, () => {
+				// Save to / load from the computer, asked for by the File menu.
+				// Importing needs the Media Lib, so it is not listened for any sooner.
+				ProjectFile.listen(page);
 				entryFunction();
 			});
 		});

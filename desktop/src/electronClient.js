@@ -68,6 +68,26 @@ ipcRenderer.on('databaseRestored', function() {
     window.location.href = 'index.html?back=yes';
 });
 
+// Save to / load from the computer. The File menu in main.js asks for these;
+// the page registers handlers through setProjectFileHandlers once it can act.
+let projectFileHandlers = null;
+
+ipcRenderer.on('project-file-save', function() {
+    if (projectFileHandlers) {
+        projectFileHandlers.save();
+    } else {
+        ipcRenderer.send('project-file-result', {action: 'save', error: 'ScratchJr is still starting. Try again in a moment.'});
+    }
+});
+
+ipcRenderer.on('project-file-load', function(event, file) {
+    if (projectFileHandlers) {
+        projectFileHandlers.load(file);
+    } else {
+        ipcRenderer.send('project-file-result', {action: 'load', fileName: file.fileName, error: 'ScratchJr is still starting. Try again in a moment.'});
+    }
+});
+
 
 
 
@@ -355,6 +375,21 @@ class ElectronDesktopInterface {
 
     deviceName(){
         return 'desktop';
+    }
+
+    // On a tablet this opens the email or AirDrop sheet. Here the packed .sjr
+    // goes to main.js, which asks where on the computer to save it.
+    sendSjrUsingShareDialog(fileName, emailSubject, emailBody, shareType, b64data) {
+        if (DEBUG_FILEIO) debugLog('sendSjrUsingShareDialog', fileName);
+        ipcRenderer.send('project-file-packaged', {fileName: fileName, data: b64data});
+    }
+
+    setProjectFileHandlers(handlers) {
+        projectFileHandlers = handlers;
+    }
+
+    projectFileResult(result) {
+        ipcRenderer.send('project-file-result', result);
     }
 
     analyticsEvent(category, action, usageLabel, value) {

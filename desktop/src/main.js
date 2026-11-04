@@ -239,6 +239,109 @@ function openAboutWindow() {
   aboutWindow.on('closed', () => { aboutWindow = null; });
 }
 
+// Save to / load from the computer ===========================================
+// A project travels as an .sjr file, the archive the tablet apps share, so it
+// opens in ScratchJr on an iPad or Android tablet too. The editor page packs and
+// unpacks it (src/app/src/desktop/ProjectFile.js); this side owns the dialogs
+// and the disk.
+
+const PROJECT_FILE_FILTERS = [{name: 'ScratchJr Project', extensions: ['sjr']}];
+// Far above any real project; a bigger file is not one, and would have to cross
+// to the page as base64 in a single message.
+const MAX_PROJECT_FILE_BYTES = 64 * 1024 * 1024;
+// Where the last project was saved or loaded, so the next dialog starts there.
+let lastProjectFolder = null;
+
+function projectFolder() {
+  return lastProjectFolder || app.getPath('documents');
+}
+
+function showProjectFileMessage(title, message, detail) {
+  if (!win || win.isDestroyed()) return;
+  dialog.showMessageBox(win, {type: detail ? 'warning' : 'info', buttons: ['OK'], title: title, message: message, detail: detail || ''});
+}
+
+function editorReady() {
+  if (editorContents && !editorContents.isDestroyed()) return true;
+  showProjectFileMessage(branding.productName, 'ScratchJr is still starting. Try again in a moment.');
+  return false;
+}
+
+// The page saves the open project and packs it, then answers with
+// project-file-packaged.
+function saveProjectToComputer() {
+  if (!editorReady()) return;
+  editorContents.send('project-file-save');
+}
+
+function loadProjectFromComputer() {
+  if (!editorReady()) return;
+
+  const picked = dialog.showOpenDialog(win, {
+    title: 'Load Project from Computer',
+    defaultPath: projectFolder(),
+    filters: PROJECT_FILE_FILTERS,
+    properties: ['openFile']
+  });
+  if (!picked || !picked.length) return;
+
+  const file = picked[0];
+  lastProjectFolder = path.dirname(file);
+
+  let contents;
+  try {
+    if (fs.statSync(file).size > MAX_PROJECT_FILE_BYTES) {
+      showProjectFileMessage('Load Project', 'That file is too big to be a ScratchJr project.', file);
+      return;
+    }
+    contents = fs.readFileSync(file);
+  } catch (error) {
+    log.error('Could not read project file', {file, error: error.message});
+    showProjectFileMessage('Load Project', 'That file could not be opened.', error.message);
+    return;
+  }
+
+  // An .sjr is a zip archive, which always starts with "PK".
+  if (contents.length < 4 || contents[0] !== 0x50 || contents[1] !== 0x4b) {
+    showProjectFileMessage('Load Project', 'That file is not a ScratchJr project.', file);
+    return;
+  }
+
+  log.info('Loading project from file', {file, bytes: contents.length});
+  editorContents.send('project-file-load', {fileName: path.basename(file), data: contents.toString('base64')});
+}
+
+ipcMain.on('project-file-packaged', (event, packed) => {
+  if (!win || win.isDestroyed()) return;
+
+  const target = dialog.showSaveDialog(win, {
+    title: 'Save Project to Computer',
+    defaultPath: path.join(projectFolder(), `${(packed && packed.fileName) || 'Project'}.sjr`),
+    filters: PROJECT_FILE_FILTERS
+  });
+  if (!target) return;
+  lastProjectFolder = path.dirname(target);
+
+  try {
+    fs.writeFileSync(target, Buffer.from(packed.data, 'base64'));
+    log.info('Project saved to file', {file: target});
+  } catch (error) {
+    log.error('Could not save project file', {file: target, error: error.message});
+    showProjectFileMessage('Save Project', 'The project could not be saved there.', error.message);
+  }
+});
+
+ipcMain.on('project-file-result', (event, result) => {
+  result = result || {};
+  if (!result.error) {
+    log.info('Project loaded from file', {file: result.fileName});
+    return;
+  }
+  log.warn(`Project ${result.action} did not finish`, result);
+  const title = result.action === 'load' ? 'Load Project' : 'Save Project';
+  showProjectFileMessage(title, result.error, [result.fileName, result.detail].filter(Boolean).join('\n'));
+});
+
 ipcMain.on('open-ai-settings', () => openSettingsWindow());
 
 ipcMain.on('ai-settings-saved', () => {
@@ -317,6 +420,9 @@ app.on('ready', () => {
   createWindow();
 
   const fileItems = [];
+  fileItems.push({label: 'Save Project to Computer...', accelerator: 'CmdOrCtrl+S', click: saveProjectToComputer});
+  fileItems.push({label: 'Load Project from Computer...', accelerator: 'CmdOrCtrl+O', click: loadProjectFromComputer});
+  fileItems.push({type: 'separator'});
   if (dataStore.hasRestoreDatabase()) {
     fileItems.push({label: 'Restore projects', click: dataStore.restoreProjects.bind(dataStore)});
     fileItems.push({type: 'separator'});
