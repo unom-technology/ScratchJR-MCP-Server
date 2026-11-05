@@ -6,14 +6,14 @@ Create, edit, run, and inspect real ScratchJr Desktop projects through an MCP cl
 
 Use natural-language requests to build interactive stories, animations, and simple games with characters, backgrounds, text, sounds, and programming blocks. The server also provides screenshots, custom SVG artwork, and automatic database backups.
 
-**Already set up on this PC:** `Scratch.JR [ AI-Assisted ] v1.0.2` is built and installed, and the server dependencies are in place. The `scratchjr` entry is registered with Claude Desktop, Claude Code, and Codex, all three pointing at `C:\Users\SkieHackerYT\Documents\Gitlab\ScratchJR-MCP\src\server.js`. Google Antigravity is registered too, in `%USERPROFILE%\.gemini\config\mcp_config.json`. Restart Claude, start a new Codex session, and refresh Antigravity's MCP server list to load the tools. Cursor is not installed on this PC; section 5 covers it when it is. The installation steps below are for setting up another PC or reinstalling this project.
+**Already set up on this PC:** `Scratch.JR [ AI-Assisted ] v1.0.4` is built and installed, and the server dependencies are in place. The `scratchjr` entry is registered with Claude Desktop, Claude Code, and Codex, all three pointing at `C:\Users\SkieHackerYT\Documents\Gitlab\ScratchJR-MCP\src\server.js`. Google Antigravity is registered too, in `%USERPROFILE%\.gemini\config\mcp_config.json`. Restart Claude, start a new Codex session, and refresh Antigravity's MCP server list to load the tools. Cursor is not installed on this PC; section 5 covers it when it is. The installation steps below are for setting up another PC or reinstalling this project.
 
 ## Requirements:
 
 | Requirement | Details |
 | --- | --- |
 | Operating system | Windows with PowerShell; this integration was tested on Windows |
-| ScratchJr | Either the bundled build in `desktop/`, `Scratch.JR [ AI-Assisted ] v1.0.2`, or a stock ScratchJr Desktop community port, tested with version 1.3.2 |
+| ScratchJr | Either the bundled build in `desktop/`, `Scratch.JR [ AI-Assisted ] v1.0.4`, or a stock ScratchJr Desktop community port, tested with version 1.3.2 |
 | Node.js and npm | Node.js 22 or newer; tested with Node 24. npm is used to install server dependencies |
 | AI client | Claude Desktop, Claude Code, Codex, Cursor, or Google Antigravity with local MCP support; run the client on the same Windows PC as ScratchJr |
 | CLI registration | Install the Claude Code or Codex CLI and make it available on PATH if you want the setup script to register that client automatically. Claude Desktop setup does not require these CLIs |
@@ -24,13 +24,13 @@ Use natural-language requests to build interactive stories, animations, and simp
 
 This integration controls ScratchJr Desktop. The tablet version and Scratch 3 use different integrations.
 
-## Bundled desktop app: Scratch.JR [ AI-Assisted ] v1.0.2
+## Bundled desktop app: Scratch.JR [ AI-Assisted ] v1.0.4
 
 `desktop/` holds a full copy of the ScratchJr Desktop community port with the MCP bridge built into it. The stock app only exposes the local connection this server needs when the server launches the app itself, so a window that a child already had open could not be driven, and the server had to ask for the app to be closed and reopened. The modified build opens that connection on `127.0.0.1:9223` as it starts, so the server attaches to whichever window is already running.
 
 The build also reports its identity through `scratchjr_status`, which returns `build` and `buildVersion` alongside the ScratchJr data version.
 
-It installs to `%LOCALAPPDATA%\ScratchJR-AI-Assisted\app-1.0.2\ScratchJr.exe`. Projects still live in `Documents\ScratchJR\scratchjr.sqllite`, the same file the stock app uses, so existing projects carry over untouched.
+It installs to `%LOCALAPPDATA%\ScratchJR-AI-Assisted\app-1.0.4\ScratchJr.exe`. Projects still live in `Documents\ScratchJR\scratchjr.sqllite`, the same file the stock app uses, so existing projects carry over untouched.
 
 See **Installation Setup** below for how to build and install it. `desktop/UPSTREAM.md` records the upstream commit this copy came from and every modification made to it, so the changes can be re-applied to a newer upstream release.
 
@@ -197,7 +197,7 @@ There are two ways to install. Both finish with the same MCP registration, so th
 
 | Path | What you get | When to use it |
 | --- | --- | --- |
-| **One-click** | Builds and installs `Scratch.JR [ AI-Assisted ] v1.0.2` from `desktop/`, then registers the MCP server | The normal choice. The app opens the MCP connection by itself, so nothing has to be closed and reopened |
+| **One-click** | Builds and installs `Scratch.JR [ AI-Assisted ] v1.0.4` from `desktop/`, then registers the MCP server | The normal choice. The app opens the MCP connection by itself, so nothing has to be closed and reopened |
 | **Manual** | Uses a stock ScratchJr Desktop download and sets the server up step by step | You want the unmodified app, or the one-click build failed and you are working through it |
 
 Paths in this document are for this PC, where the project lives at `C:\Users\SkieHackerYT\Documents\Gitlab\ScratchJR-MCP`. On another machine, replace that folder and the Windows account name throughout.
@@ -216,8 +216,8 @@ It runs these steps in order and stops at the first failure with a message namin
 1. Installs this server's dependencies.
 2. Installs the desktop app's dependencies in `desktop\` — around 900 packages, and the slowest step.
 3. Downloads the Electron 1.8.2 runtime. npm 11 defers that package's install script, so it is fetched explicitly.
-4. Builds `desktop\out\make\squirrel.windows\x64\Scratch.JR [ AI-Assisted ]-1.0.2 Setup.exe`.
-5. Runs that installer, which installs to `%LOCALAPPDATA%\ScratchJR-AI-Assisted\app-1.0.2\` and starts the app.
+4. Builds `desktop\out\make\squirrel.windows\x64\Scratch.JR [ AI-Assisted ]-1.0.4 Setup.exe`.
+5. Runs that installer, which installs to `%LOCALAPPDATA%\ScratchJR-AI-Assisted\app-1.0.4\` and starts the app.
 6. Registers the server with Claude Desktop, Claude Code, and Codex.
 
 Expect fifteen to twenty minutes the first time, most of it in steps 2 and 4. Windows SmartScreen may warn about the installer: it is unsigned because it is built on your machine rather than downloaded from a signed release.
@@ -391,7 +391,7 @@ A healthy result names the executable and lists your projects:
 ```json
 {
   "config": {
-    "executable": "C:\\Users\\SkieHackerYT\\AppData\\Local\\ScratchJR-AI-Assisted\\app-1.0.2\\ScratchJr.exe",
+    "executable": "C:\\Users\\SkieHackerYT\\AppData\\Local\\ScratchJR-AI-Assisted\\app-1.0.4\\ScratchJr.exe",
     "database": "C:\\Users\\SkieHackerYT\\Documents\\ScratchJR\\scratchjr.sqllite"
   },
   "app": { "ready": true, "projects": [ { "ID": 1, "NAME": "Project 1" } ] }

@@ -10,7 +10,7 @@
 //  directory: %LOCALAPPDATA%\<installerName>\app-<version>\<exeName>
 
 const productName = 'Scratch.JR [ AI-Assisted ]';
-const version = '1.0.2';
+const version = '1.0.4';
 
 module.exports = {
   productName: productName,

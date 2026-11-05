@@ -324,6 +324,13 @@ export default class IO {
                 jsonData.thumbnail = JSON.parse(jsonData.thumbnail);
             }
 
+            // No row, or a row the editor has never saved into (the lobby's +
+            // button creates one with only a name), has nothing to pack.
+            if (!jsonData.json || !jsonData.json.pages) {
+                throw new Error('Project ' + projectReference + ' has no saved pages in the database' +
+                    (jsonData.name ? '' : ' (no project row found)'));
+            }
+
             // Method to determine if a particular asset needs to be collected
             // If it does, save the reference in projectMetadata for collection
             var collectAsset = function (assetType, md5) {

@@ -102,7 +102,7 @@ class McpSession {
     await this.send('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: {},
-      clientInfo: {name: 'scratchjr-assistant', version: '1.0.2'}
+      clientInfo: {name: 'scratchjr-assistant', version: '1.0.4'}
     });
     this.notify('notifications/initialized');
 

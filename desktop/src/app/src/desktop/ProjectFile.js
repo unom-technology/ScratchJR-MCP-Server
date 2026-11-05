@@ -1,5 +1,6 @@
 import ScratchJr from '../editor/ScratchJr';
 import Alert from '../editor/ui/Alert';
+import Project from '../editor/ui/Project';
 import IO from '../iPad/IO';
 import iOS from '../iPad/iOS';
 
@@ -37,13 +38,21 @@ export default class ProjectFile {
             ProjectFile.report('save', 'Sample projects can\'t be saved. Make a project of your own to save it to your computer.');
             return;
         }
+        if (!ScratchJr.stage || !ScratchJr.stage.currentPage) {
+            ProjectFile.report('save', 'The project is still opening. Try again in a moment.');
+            return;
+        }
+        if (Project.error) {
+            ProjectFile.report('save', 'This project did not open properly, so it can\'t be saved to your computer.');
+            return;
+        }
 
         // Same order as UI.infoDoShare: stop the scripts, save what is on the
         // screen, then pack what is now in the database.
         ScratchJr.onHold = true; // Freeze the editing UI
         try {
             ScratchJr.stopStrips();
-            ScratchJr.saveProject(null, function () {
+            ProjectFile.saveOpenProject(function () {
                 try {
                     IO.zipProject(ScratchJr.currentProject, function (contents) {
                         Alert.close();
@@ -95,6 +104,19 @@ export default class ProjectFile {
         }
     }
 
+    // Always writes the screen to the database, as UI.infoDoShare does.
+    // ScratchJr.saveProject skips the write when nothing is flagged as changed,
+    // and a project made with the lobby's + button has no pages in the database
+    // until its first write, so packing straight after opening one found nothing.
+    static saveOpenProject (whenDone) {
+        if (ScratchJr.editmode == 'storyStarter') {
+            // Saving a story starter creates the project, which only saveProject does.
+            ScratchJr.saveProject(null, whenDone);
+        } else {
+            Project.prepareToSave(ScratchJr.currentProject, whenDone);
+        }
+    }
+
     static unfreeze () {
         Alert.close();
         ScratchJr.onHold = false;
@@ -106,7 +128,10 @@ export default class ProjectFile {
             action: action,
             fileName: fileName,
             error: message || undefined,
-            detail: err ? String(err.message || err) : undefined
+            detail: err ? String(err.message || err) : undefined,
+            // For the log only; the dialog shows the detail line.
+            stack: err && err.stack ? String(err.stack) : undefined,
+            projectId: ScratchJr.currentProject
         });
     }
 }

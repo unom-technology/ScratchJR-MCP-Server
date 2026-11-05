@@ -1,7 +1,7 @@
 {
     "name": "scratch-jr-ai-assisted",
     "productName": "Scratch.JR [ AI-Assisted ]",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "description": "Scratch.JR with a built-in MCP bridge and an AI assistant panel",
     "main": "src/main.js",
     "scripts": {
