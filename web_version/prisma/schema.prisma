@@ -1,0 +1,112 @@
+// Every student's work, kept apart by userId.
+//
+// Project, Shape and Background mirror ScratchJr's own PROJECTS, USERSHAPES and
+// USERBKGS tables column for column, so the browser can rebuild its local copy
+// of them exactly. localId is ScratchJr's ID column: it only has to be unique
+// within one student's work, which is why each table is keyed on the pair.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  // Stored lower case; logging in is not case sensitive.
+  username     String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  lastLoginAt  DateTime?
+  // Next free block of ScratchJr IDs; see reserveIdBlock in server/store.js.
+  idCursor     Int          @default(1)
+  sessions     Session[]
+  projects     Project[]
+  shapes       Shape[]
+  backgrounds  Background[]
+  files        MediaFile[]
+}
+
+model Session {
+  // SHA-256 of the cookie's token, so a copy of the database cannot be used to log in.
+  id        String   @id
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+}
+
+model Project {
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  localId   Int
+  ctime     String?
+  mtime     String?
+  altmd5    String?
+  pos       Int?
+  name      String?
+  json      String?
+  thumbnail String?
+  owner     String?
+  gallery   String?
+  deleted   String?
+  version   String?
+  isgift    Int?
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, localId])
+}
+
+model Shape {
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  localId   Int
+  ctime     String?
+  md5       String?
+  altmd5    String?
+  width     String?
+  height    String?
+  ext       String?
+  name      String?
+  owner     String?
+  scale     String?
+  version   String?
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, localId])
+}
+
+model Background {
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  localId   Int
+  ctime     String?
+  md5       String?
+  altmd5    String?
+  width     String?
+  height    String?
+  ext       String?
+  owner     String?
+  version   String?
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, localId])
+}
+
+// Characters, backgrounds, thumbnails and recordings, by ScratchJr's file name
+// (an MD5 plus extension). Contents are stored exactly as ScratchJr hands them
+// over: base64, or a data URL for a recorded sound.
+model MediaFile {
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  contents  String
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, name])
+}

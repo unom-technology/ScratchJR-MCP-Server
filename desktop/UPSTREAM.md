@@ -69,6 +69,12 @@ written against JSZip 2 and `package.json` installs JSZip 3, which removed `load
 - `appEntry.js` calls `ProjectFile.listen(page)` once the Media Lib has loaded, because importing
   needs `MediaLib.keys`.
 
+### `src/app/appEntry.js`: `window.loadPage`
+
+`Lobby.loadLink` calls `loadPage` as a global to start the help pages. Electron runs `appEntry.js`
+as a plain script, which makes its functions global by themselves; `web_version` bundles it, which
+does not. `appEntry.js` now sets `window.loadPage` explicitly. Nothing changes for the desktop app.
+
 ### `src/app/settings.json`
 
 Adds `buildName` and `buildVersion`, which the MCP `scratchjr_status` tool reports.

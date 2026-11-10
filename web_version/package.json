@@ -1,0 +1,37 @@
+{
+  "name": "scratchjr-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ScratchJr in the browser for a classroom network, with student accounts and projects saved on the server",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "node server/index.js",
+    "reset-password": "node scripts/reset-password.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "express": "5.3.0",
+    "prisma": "6.19.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "intl": "1.2.5",
+    "intl-messageformat": "2.2.0",
+    "jszip": "3.10.2",
+    "snapsvg": "0.5.1",
+    "spark-md5": "3.0.2",
+    "sql.js": "1.15.2"
+  },
+  "allowScripts": {
+    "prisma@6.19.3": true,
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.2": true
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+# Built by `npm run build` from ../desktop/src/app
+public/app/
+# Student accounts and projects
+data/*.db
+data/*.db-journal
+.env
+certs/

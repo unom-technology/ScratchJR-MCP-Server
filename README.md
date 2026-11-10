@@ -59,6 +59,20 @@ The server still works with an unmodified ScratchJr Desktop installation. It loo
 
 Product name, version, installer name, and debug port live in `desktop/src/branding.js`, and nothing else hardcodes them. Note that MIT's trademark policy, in `desktop/TRADEMARKS`, expects a build with added features to drop the ScratchJr marks and use its own name; that matters if you publish the installer rather than build it for yourself.
 
+## Web version for a classroom network
+
+`web_version/` runs the same ScratchJr in the browser, served from one PC to the rest of the room. Students open the server's address, such as `http://192.168.9.1`, create an account or log in, and see only their own projects. Work saves to the server as they go, and the account button in the corner has **Save project to computer**, **Load project from computer** and **Log out**. Projects are kept per student with Prisma and SQLite.
+
+```
+cd web_version
+npm install
+npm run setup
+npm run build
+npm start
+```
+
+The build takes ScratchJr from `desktop/src/app`, so the two stay the same program. See `web_version/README.md` for settings, HTTPS (needed for recording sounds and the camera), password resets and backups.
+
 ## Built-in assistant
 
 The app has its own chat panel beside the editor, so a child can ask for a story without Claude Desktop, Codex or any other editor installed. You supply the model - a hosted one with your own API key, or LM Studio or Ollama running on the same computer; the app supplies the tools.

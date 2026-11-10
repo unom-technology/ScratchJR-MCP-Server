@@ -1,0 +1,173 @@
+/* The account button and its menu. Sits above ScratchJr's own frames, in the
+   bottom-right corner, which is empty space on every ScratchJr page. */
+
+.sjr-web-account {
+  --sjr-orange: #f9a737;
+  --sjr-blue: #28a5da;
+  --sjr-ink: #2b3a4a;
+  --sjr-muted: #6b7a89;
+  --sjr-line: #e3e7ec;
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 7000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  font: 14px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--sjr-ink);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.sjr-web-account button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.sjr-web-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 8px 14px 8px 10px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--sjr-orange);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.sjr-web-pill:hover {
+  filter: brightness(1.05);
+}
+
+.sjr-web-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Green when everything is on the server, amber while sending, red when it can't be reached. */
+.sjr-web-dot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #3cbf63;
+}
+
+.sjr-web-dot.saving {
+  background: #ffd23f;
+}
+
+.sjr-web-dot.offline {
+  background: #e5484d;
+}
+
+.sjr-web-menu {
+  width: 250px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+
+.sjr-web-menu[hidden],
+.sjr-web-toast[hidden] {
+  display: none;
+}
+
+.sjr-web-heading {
+  font-size: 15px;
+}
+
+.sjr-web-status {
+  margin: 4px 0 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sjr-line);
+  color: var(--sjr-muted);
+  font-size: 13px;
+}
+
+.sjr-web-item {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #eef7fc;
+  color: var(--sjr-ink);
+  text-align: left;
+  font-weight: 600;
+}
+
+.sjr-web-item:hover:not(:disabled) {
+  background: #d9eef9;
+}
+
+.sjr-web-item:disabled {
+  cursor: default;
+  color: #a7b2bd;
+  background: #f4f6f8;
+}
+
+.sjr-web-item.sjr-web-logout {
+  margin-top: 10px;
+  background: #fff1e0;
+  color: #b25c00;
+}
+
+.sjr-web-item.sjr-web-logout:hover:not(:disabled) {
+  background: #ffe3c2;
+}
+
+.sjr-web-toast {
+  max-width: 300px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--sjr-ink);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.sjr-web-toast.error {
+  background: #c62f35;
+}
+
+/* Shown instead of ScratchJr when the server cannot be reached at start. */
+.sjr-web-startup-error {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: #fff8ee;
+  color: #2b3a4a;
+  font: 18px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  text-align: center;
+}
+
+.sjr-web-startup-error h1 {
+  margin: 0;
+  color: #f9a737;
+}
+
+.sjr-web-startup-error button {
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 999px;
+  background: #28a5da;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}

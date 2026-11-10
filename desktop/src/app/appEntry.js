@@ -23,6 +23,10 @@ function loadSettings (settingsRoot, whenDone) {
 // App-wide entry-point
 window.onload = () => loadPage(window.scratchJrPage);
 
+// Lobby.loadLink calls loadPage for the help pages. Electron runs this file as
+// a plain script, which makes it global by itself; a bundle (web_version) does not.
+window.loadPage = loadPage;
+
 
 
 function loadPage(page) {
