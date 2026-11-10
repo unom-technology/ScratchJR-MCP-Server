@@ -24,16 +24,19 @@ export const STUDENT_FIELDS = {
   section: {select: SECTION_FIELDS},
 };
 
-// How many projects each account has, and when one last changed, by user ID.
-// One small query over every account: a school's worth of rows is cheap, and
-// it needs no list of IDs, which SQLite limits the length of.
+// How many projects each account has, how many of those are scored, and when
+// one last changed, by user ID. Small queries over every account: a school's
+// worth of rows is cheap, and they need no list of IDs, which SQLite limits
+// the length of.
 export async function projectTotals(prisma) {
-  const totals = await prisma.project.groupBy({
-    by: ['userId'], where: NOT_DELETED, _count: {_all: true}, _max: {updatedAt: true},
-  });
-  return new Map(totals.map(t => [t.userId, {projectCount: t._count._all, lastChangeAt: t._max.updatedAt}]));
+  const [projects, scores] = await Promise.all([
+    prisma.project.groupBy({by: ['userId'], where: NOT_DELETED, _count: {_all: true}, _max: {updatedAt: true}}),
+    prisma.score.groupBy({by: ['userId'], where: {project: {is: NOT_DELETED}}, _count: {_all: true}}),
+  ]);
+  const scored = new Map(scores.map(s => [s.userId, s._count._all]));
+  return new Map(projects.map(t => [t.userId, {projectCount: t._count._all, scoredCount: scored.get(t.userId) || 0, lastChangeAt: t._max.updatedAt}]));
 }
 
 export function withTotals(accounts, totals) {
-  return accounts.map(a => ({...a, ...(totals.get(a.id) || {projectCount: 0, lastChangeAt: null})}));
+  return accounts.map(a => ({...a, ...(totals.get(a.id) || {projectCount: 0, scoredCount: 0, lastChangeAt: null})}));
 }

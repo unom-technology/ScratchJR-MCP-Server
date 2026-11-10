@@ -40,6 +40,8 @@ model User {
   shapes       Shape[]
   backgrounds  Background[]
   files        MediaFile[]
+  // Teachers and admins: the scores they gave.
+  scoresGiven  Score[]      @relation("ScoresGiven")
 
   @@index([sectionId])
 }
@@ -85,8 +87,31 @@ model Project {
   version   String?
   isgift    Int?
   updatedAt DateTime @updatedAt
+  score     Score?
 
   @@id([userId, localId])
+}
+
+// A teacher's score for one student project, such as 45 out of 50, with a
+// comment. The student sees it on My Projects. It goes when the project or
+// the student's account does.
+model Score {
+  userId       Int
+  projectId    Int
+  project      Project  @relation(fields: [userId, projectId], references: [userId, localId], onDelete: Cascade)
+  points       Int
+  outOf        Int
+  comment      String?
+  // The project's MTIME when it was scored, to show that it changed since.
+  projectMtime String?
+  // Kept when the teacher's account is deleted, without their name.
+  scoredById   Int?
+  scoredBy     User?    @relation("ScoresGiven", fields: [scoredById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@id([userId, projectId])
+  @@index([scoredById])
 }
 
 model Shape {

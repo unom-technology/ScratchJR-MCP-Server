@@ -8,6 +8,7 @@ import {
 import { Store, BadRequest } from './store.js';
 import { MAX_FILE_CHARS } from './tables.js';
 import { createAdminRouter } from './admin.js';
+import { scoresOf } from './scores.js';
 
 // A scrypt hash of a random password, checked when the username does not
 // exist, so a wrong name takes as long to refuse as a wrong password.
@@ -156,6 +157,11 @@ export function createApp({prisma, config}) {
 
   api.post('/files/clean', requireUser, async (req, res) => {
     res.json(await store.clean(req.user.id, req.body?.type));
+  });
+
+  // The scores teachers gave this student's projects, for My Projects.
+  api.get('/scores', requireUser, async (req, res) => {
+    res.json({scores: await scoresOf(prisma, req.user.id)});
   });
 
   api.use('/admin', requireUser, requireStaff, createAdminRouter({prisma, store}));

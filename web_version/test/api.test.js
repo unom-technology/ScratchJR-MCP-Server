@@ -400,7 +400,7 @@ test('an admin sees every student\'s projects and opens them without changing an
   const detail = (await admin('GET', `/api/admin/students/${kimId}`)).json;
   assert.equal(detail.student.username, 'kim');
   assert.deepEqual(detail.projects.map(p => p.name), ['Kim\'s park', 'From a file']);
-  assert.deepEqual(detail.projects[0], {id, name: 'Kim\'s park', changedAt: new Date(1794269795337).toISOString(), thumbnail: `${id}_thumb.png`, pages: 4, isGift: false});
+  assert.deepEqual(detail.projects[0], {id, name: 'Kim\'s park', changedAt: new Date(1794269795337).toISOString(), thumbnail: `${id}_thumb.png`, pages: 4, isGift: false, score: null});
   assert.equal(detail.projects[1].isGift, true);
 
   // What ScratchJr opens: all of Kim's rows, and her files, without using up
@@ -429,6 +429,123 @@ test('an admin sees every student\'s projects and opens them without changing an
   // The admin's own projects are still their own, and Kim's are unchanged.
   assert.deepEqual((await admin('GET', '/api/state')).json.projects, []);
   assert.equal((await kim('GET', '/api/state')).json.projects.length, 3);
+});
+
+test('a teacher sees each page of a project, scores it, and the student sees the score', async () => {
+  const {call: admin} = await signUpAdmin('scoreboss');
+  const section = (await admin('POST', '/api/admin/sections', {grade: 2, name: 'Joy'})).json.section;
+  const other = (await admin('POST', '/api/admin/sections', {grade: 2, name: 'Peace'})).json.section;
+  await admin('POST', '/api/admin/accounts', {role: 'teacher', fullName: 'Rafael Bendigo', username: 'rjoy', password: 'rjoy-pass', teachingIds: [section.id]});
+  await admin('POST', '/api/admin/accounts', {role: 'teacher', fullName: 'Liza Mercado', username: 'lpeace', password: 'lpeace-pass', teachingIds: [other.id]});
+  const teacher = await login('rjoy');
+  const outsider = await login('lpeace');
+  const {call: pia, id: piaId} = await signUp('pia', 2, 'Pia Santos');
+  await admin('PATCH', `/api/admin/accounts/${piaId}`, {sectionId: section.id});
+
+  // Two pages: the Park with a character Pia drew and a title, then the Cat with scripts.
+  const id = (await pia('GET', '/api/state')).json.idBlockStart;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>';
+  const json = {
+    pages: ['page 1', 'page 2'], currentPage: 'page 1',
+    'page 1': {
+      md5: 'Park.svg', sprites: ['Kid 1', 'Text 1'], layers: ['Text 1', 'Kid 1'],
+      'Kid 1': {type: 'sprite', md5: 'pia-kid.svg', name: 'Kid', xcoor: 240, ycoor: 180, cx: 40, cy: 30, w: 80, h: 60, scale: 0.5, angle: 0, flip: true, shown: true,
+        scripts: [[['onflag', 'null', 0, 0], ['say', 'Hi', 0, 0]]]},
+      'Text 1': {type: 'text', str: 'Wash your hands!', color: '#e63b2e', fontsize: 36, xcoor: 120, ycoor: 40, cx: 100, cy: 20, shown: true},
+    },
+    'page 2': {
+      md5: 'Farm.svg', sprites: ['Cat 1', 'Ghost'], layers: [],
+      'Cat 1': {type: 'sprite', md5: 'Cat.svg', name: 'Cat', xcoor: 100, ycoor: 200, cx: 50, cy: 50, w: 100, h: 100, scale: 1, angle: 90, shown: false,
+        scripts: [[['onflag', 'null', 0, 0], ['repeat', 4, 0, 0, [['forward', 1, 0, 0], ['hop', 2, 0, 0]]]], [['ontouch', 'null', 0, 0]]]},
+    },
+  };
+  await pia('POST', '/api/sync', {
+    files: [{name: 'pia-kid.svg', contents: Buffer.from(svg).toString('base64')}],
+    rows: [
+      {table: 'PROJECTS', id, row: project('Clean Hands', {MTIME: '1794300000000', JSON: JSON.stringify(json)})},
+      {table: 'PROJECTS', id: id + 1, row: project('Not readable', {JSON: '{nope'})},
+    ],
+  });
+
+  const view = (await teacher('GET', `/api/admin/students/${piaId}/projects/${id}`)).json;
+  assert.equal(view.project.name, 'Clean Hands');
+  assert.equal(view.project.score, null);
+  assert.equal(view.pages.length, 2);
+  const [one, two] = view.pages;
+  assert.equal(one.background, '/app/svglibrary/Park.svg');
+  assert.deepEqual(one.items.map(i => i.id), ['Text 1', 'Kid 1'], 'drawn bottom first');
+  assert.deepEqual(one.items[0], {id: 'Text 1', shown: true, x: 120, y: 40, cx: 100, cy: 20, type: 'text', text: 'Wash your hands!', color: '#e63b2e', size: 36});
+  assert.equal(one.items[1].image, `/api/admin/students/${piaId}/images/pia-kid.svg`);
+  assert.deepEqual([one.items[1].flip, one.items[1].scale, one.items[1].blocks], [true, 0.5, 2]);
+  assert.deepEqual([one.characters, one.blocks], [1, 2]);
+  assert.equal(two.items[0].image, '/app/svglibrary/Cat.svg');
+  assert.deepEqual([two.items.length, two.items[0].shown, two.blocks], [1, false, 5]);
+  assert.equal((await teacher('GET', `/api/admin/students/${piaId}/projects/${id + 1}`)).json.pages, null);
+  assert.equal((await teacher('GET', `/api/admin/students/${piaId}/projects/999999`)).status, 404);
+
+  // Her drawing comes back as an SVG picture that can't run script.
+  const picture = await teacher('GET', `/api/admin/students/${piaId}/images/pia-kid.svg`);
+  assert.equal(picture.status, 200);
+  assert.match(picture.headers.get('content-type'), /^image\/svg\+xml/);
+  assert.match(picture.headers.get('content-security-policy'), /default-src 'none'.*sandbox/);
+  assert.equal(picture.text, svg);
+  assert.equal((await teacher('GET', `/api/admin/students/${piaId}/images/notes.txt`)).status, 404);
+  assert.equal((await outsider('GET', `/api/admin/students/${piaId}/images/pia-kid.svg`)).status, 404);
+
+  // Scores are whole numbers from 0 to the total.
+  const score = (call, body, project = id) => call('PUT', `/api/admin/students/${piaId}/projects/${project}/score`, body);
+  for (const bad of [{points: 51, outOf: 50}, {points: -1, outOf: 50}, {points: 2.5, outOf: 50}, {points: 1, outOf: 0}, {points: 1, outOf: 1001},
+    {points: 'x', outOf: 50}, {outOf: 50}, {points: 1, outOf: 50, comment: 'x'.repeat(1001)}, {points: 1, outOf: 50, comment: 5}]) {
+    assert.equal((await score(teacher, bad)).status, 400, JSON.stringify(bad).slice(0, 80));
+  }
+  const given = await score(teacher, {points: '45', outOf: 50, comment: '  Great quiz pages!\r\nKeep going. '});
+  assert.equal(given.status, 200, given.text);
+  assert.deepEqual({...given.json.score, scoredAt: 'x', scoredBy: {...given.json.score.scoredBy, id: 0}},
+    {points: 45, outOf: 50, comment: 'Great quiz pages!\nKeep going.', scoredBy: {id: 0, name: 'Rafael Bendigo'}, scoredAt: 'x', changedSince: false});
+
+  // Only the teachers of her section, and admins, can score her; a student can't.
+  assert.equal((await score(outsider, {points: 50, outOf: 50})).status, 404);
+  assert.equal((await score(pia, {points: 50, outOf: 50})).status, 403);
+  assert.equal((await outsider('DELETE', `/api/admin/students/${piaId}/projects/${id}/score`)).status, 404);
+  assert.equal((await score(teacher, {points: 1, outOf: 5}, 999999)).status, 404);
+
+  // The teacher's lists show it.
+  assert.equal((await teacher('GET', `/api/admin/students/${piaId}`)).json.projects.find(p => p.id === id).score.points, 45);
+  const row = (await teacher('GET', '/api/admin/students')).json.students.find(s => s.id === piaId);
+  assert.deepEqual([row.projectCount, row.scoredCount], [2, 1]);
+
+  // Pia sees it on My Projects, without the teacher's note about changes.
+  const mine = (await pia('GET', '/api/scores')).json.scores;
+  assert.equal(mine.length, 1);
+  assert.deepEqual([mine[0].projectId, mine[0].points, mine[0].outOf, mine[0].comment, mine[0].scoredBy.name], [id, 45, 50, 'Great quiz pages!\nKeep going.', 'Rafael Bendigo']);
+  assert.ok(!('changedSince' in mine[0]));
+  assert.deepEqual((await teacher('GET', `/api/admin/students/${piaId}/scores`)).json.scores, mine);
+  assert.deepEqual((await outsider('GET', '/api/scores')).json.scores, []);
+
+  // Changing the project after it was scored shows on the teacher's side.
+  await pia('POST', '/api/sync', {rows: [{table: 'PROJECTS', id, row: project('Clean Hands', {MTIME: '1794300099999', JSON: JSON.stringify(json)})}]});
+  assert.equal((await teacher('GET', `/api/admin/students/${piaId}/projects/${id}`)).json.project.score.changedSince, true);
+  // An admin scoring again replaces it, under the admin's name.
+  const again = (await score(admin, {points: 48, outOf: 50})).json.score;
+  assert.deepEqual([again.points, again.comment, again.changedSince], [48, '', false]);
+  assert.notEqual(again.scoredBy.name, 'Rafael Bendigo');
+
+  // Removing it, or deleting the project, takes it off My Projects.
+  assert.equal((await teacher('DELETE', `/api/admin/students/${piaId}/projects/${id}/score`)).json.score, null);
+  assert.deepEqual((await pia('GET', '/api/scores')).json.scores, []);
+  await score(teacher, {points: 40, outOf: 50});
+  await pia('POST', '/api/sync', {rows: [{table: 'PROJECTS', id, row: project('Clean Hands', {DELETED: 'YES'})}]});
+  assert.deepEqual((await pia('GET', '/api/scores')).json.scores, []);
+  assert.equal((await teacher('GET', '/api/admin/students')).json.students.find(s => s.id === piaId).scoredCount, 0);
+  assert.equal((await score(teacher, {points: 1, outOf: 5})).status, 404);
+  // Removing the row removes its score with it.
+  await pia('POST', '/api/sync', {rows: [{table: 'PROJECTS', id, row: null}]});
+  assert.equal(await prisma.score.count({where: {userId: piaId, projectId: id}}), 0);
+
+  // A score outlives the teacher's account, without their name.
+  await score(teacher, {points: 3, outOf: 5}, id + 1);
+  await admin('DELETE', `/api/admin/accounts/${(await teacher('GET', '/api/me')).json.id}`);
+  assert.deepEqual((await pia('GET', '/api/scores')).json.scores.map(s => [s.points, s.scoredBy]), [[3, null]]);
 });
 
 test('logging out ends the session, and writes from another site are refused', async () => {
