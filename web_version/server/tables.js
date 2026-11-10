@@ -107,3 +107,9 @@ export function dataToRow(table, record) {
 export function idProblem(id) {
   return Number.isInteger(id) && id > 0 && id <= MAX_ID ? null : 'Row IDs must be positive whole numbers.';
 }
+
+// An ID from a URL or form, "12" or 12, as a number; null if it is not one.
+export function parseId(value) {
+  const text = String(value ?? '');
+  return /^\d{1,10}$/.test(text) && !idProblem(Number(text)) ? Number(text) : null;
+}

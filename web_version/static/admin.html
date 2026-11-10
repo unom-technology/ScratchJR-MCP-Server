@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScratchJr - Admin</title>
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<header class="top">
+  <img class="logo" src="/app/assets/lobby/scratchJrlogo.svg" alt="ScratchJr">
+  <span class="tag" id="role-tag"></span>
+  <nav class="tabs" aria-label="Admin page">
+    <a class="tab" href="#projects" data-tab="projects">Students' projects</a>
+    <a class="tab" href="#accounts" data-tab="accounts">Accounts</a>
+    <a class="tab" href="#sections" data-tab="sections" hidden>Sections</a>
+  </nav>
+  <div class="account">
+    <span class="who">Logged in as <strong id="me"></strong></span>
+    <a class="btn ghost" href="/app/home.html">My projects</a>
+    <button type="button" class="btn ghost" id="logout">Log out</button>
+  </div>
+</header>
+
+<p class="banner" id="error" role="alert" hidden></p>
+
+<main>
+  <!-- Students' projects -->
+  <section class="layout" id="tab-projects" hidden>
+    <aside class="students" aria-label="Students">
+      <div class="students-head">
+        <h2>Students <span class="count" id="count"></span></h2>
+        <button type="button" class="btn small" id="refresh" title="Load the latest from the server">Refresh</button>
+      </div>
+      <div class="filters">
+        <input type="search" id="search" placeholder="Find a student" autocomplete="off" spellcheck="false" aria-label="Find a student">
+        <select id="sort" aria-label="Order">
+          <option value="name">A to Z</option>
+          <option value="recent">Recently changed</option>
+        </select>
+      </div>
+      <div class="filters">
+        <select id="projects-section" aria-label="Section"></select>
+      </div>
+      <p class="muted" id="students-status">Loading students...</p>
+      <ul class="student-list" id="student-list"></ul>
+    </aside>
+
+    <div class="detail" aria-live="polite">
+      <div class="placeholder" id="placeholder">
+        <h1>Students' projects</h1>
+        <p id="placeholder-text">Pick a student to see their projects. Open one to look at it in ScratchJr, exactly as they left it.</p>
+      </div>
+
+      <div id="student" hidden>
+        <div class="student-head">
+          <div>
+            <h1 id="student-name"></h1>
+            <p class="muted" id="student-meta"></p>
+          </div>
+          <a class="btn primary" id="open-lobby" href="#">Open their project list</a>
+        </div>
+        <p class="note">Opened projects are look-only: play them, look at every page and script, or download one with <strong>Save project to computer</strong>. Nothing you change is saved, so the student's work is never touched.</p>
+        <p class="muted" id="projects-status"></p>
+        <div class="grid" id="projects"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Accounts -->
+  <section class="panel" id="tab-accounts" hidden>
+    <div class="panel-head">
+      <div>
+        <h1>Accounts</h1>
+        <p class="muted" id="accounts-hint"></p>
+      </div>
+      <button type="button" class="btn primary" id="new-account" hidden>New account</button>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="accounts-search" placeholder="Find by name or username" autocomplete="off" spellcheck="false" aria-label="Find an account">
+      <select id="accounts-role" aria-label="Role" hidden>
+        <option value="">All roles</option>
+        <option value="student">Students</option>
+        <option value="teacher">Teachers</option>
+        <option value="admin">Admins</option>
+      </select>
+      <select id="accounts-grade" aria-label="Grade"></select>
+      <select id="accounts-section" aria-label="Section"></select>
+    </div>
+    <div class="table-wrap">
+      <table class="accounts">
+        <thead>
+          <tr><th>Name</th><th>Role</th><th>Grade and section</th><th>Projects</th><th>Last logged in</th><th><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody id="accounts-body"></tbody>
+      </table>
+    </div>
+    <p class="muted" id="accounts-status" hidden></p>
+  </section>
+
+  <!-- Sections (admins) -->
+  <section class="panel" id="tab-sections" hidden>
+    <div class="panel-head">
+      <div>
+        <h1>Sections</h1>
+        <p class="muted">Each class, such as Grade 4 Trust. Put students in one, and give teachers the ones they teach, from <a href="#accounts">Accounts</a>.</p>
+      </div>
+    </div>
+    <form class="toolbar" id="section-form">
+      <select name="grade" id="section-grade" aria-label="Grade" required></select>
+      <input name="name" id="section-name" placeholder="Section name, such as Trust" maxlength="40" autocomplete="off" aria-label="Section name" required>
+      <button type="submit" class="btn primary">Add section</button>
+    </form>
+    <p class="form-error" id="section-error" role="alert" hidden></p>
+    <div id="sections-list"></div>
+  </section>
+</main>
+
+<!-- Making or changing an account -->
+<dialog id="account-dialog" aria-labelledby="account-title">
+  <form id="account-form" novalidate>
+    <h2 id="account-title"></h2>
+    <p class="self-note" id="self-note" hidden>This is your account. You can't change your own role; another admin can.</p>
+
+    <fieldset class="roles">
+      <legend>Role</legend>
+      <label><input type="radio" name="role" value="student"> Student</label>
+      <label><input type="radio" name="role" value="teacher"> Teacher</label>
+      <label><input type="radio" name="role" value="admin"> Admin</label>
+    </fieldset>
+
+    <label class="field">Full name
+      <input name="fullName" autocomplete="off" maxlength="80">
+    </label>
+    <label class="field">Username
+      <input name="username" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="24">
+    </label>
+    <label class="field"><span id="password-label">Password</span>
+      <input name="password" type="password" autocomplete="new-password" maxlength="200">
+      <span class="field-note" id="password-note"></span>
+    </label>
+
+    <div id="student-fields" class="pair">
+      <label class="field">Grade
+        <select name="grade" id="account-grade"></select>
+      </label>
+      <label class="field">Section
+        <select name="section" id="account-section"></select>
+      </label>
+    </div>
+
+    <fieldset id="teacher-fields" class="teaching">
+      <legend>Sections they teach</legend>
+      <p class="field-note">They see the students in these sections, and their projects.</p>
+      <div id="teaching-list"></div>
+    </fieldset>
+
+    <p class="role-note" id="admin-note">Admins see every student and manage accounts and sections.</p>
+
+    <p class="form-error" id="account-error" role="alert" hidden></p>
+    <div class="dialog-buttons">
+      <button type="button" class="btn ghost" id="account-cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="account-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Deleting something -->
+<dialog id="confirm-dialog" aria-labelledby="confirm-title">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-message"></p>
+  <p class="form-error" id="confirm-error" role="alert" hidden></p>
+  <div class="dialog-buttons">
+    <button type="button" class="btn ghost" id="confirm-cancel">Cancel</button>
+    <button type="button" class="btn danger" id="confirm-go">Delete</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/static/admin.js"></script>
+</body>
+</html>

@@ -8,10 +8,12 @@ export const ID_BLOCK = 1000;
 
 const MAX_OPS = 500;
 
+// A request the server will not carry out, answered with this message.
+// status is 400, or 409 when it clashes with what is already there.
 export class BadRequest extends Error {
-  constructor(message) {
+  constructor(message, status = 400) {
     super(message);
-    this.status = 400;
+    this.status = status;
   }
 }
 
@@ -22,16 +24,27 @@ export class Store {
 
   // Everything the browser rebuilds its local tables from, plus its ID block.
   async state(userId) {
+    const {highest, ...tables} = await this.tables(userId);
+    return {idBlockStart: await this.reserveIdBlock(userId, highest), idBlockSize: ID_BLOCK, ...tables};
+  }
+
+  // The same, for an admin looking at a student's work. Nothing made while
+  // looking is ever saved, so no block is reserved and the student's own
+  // numbering is left exactly as it was.
+  async snapshot(userId) {
+    const {highest, ...tables} = await this.tables(userId);
+    return {idBlockStart: highest + 1, idBlockSize: ID_BLOCK, ...tables};
+  }
+
+  async tables(userId) {
     const where = {where: {userId}, orderBy: {localId: 'asc'}};
     const [projects, shapes, backgrounds] = await this.prisma.$transaction([
       this.prisma.project.findMany(where),
       this.prisma.shape.findMany(where),
       this.prisma.background.findMany(where),
     ]);
-    const highest = Math.max(0, ...[projects, shapes, backgrounds].flat().map(r => r.localId));
     return {
-      idBlockStart: await this.reserveIdBlock(userId, highest),
-      idBlockSize: ID_BLOCK,
+      highest: Math.max(0, ...[projects, shapes, backgrounds].flat().map(r => r.localId)),
       projects: projects.map(r => dataToRow('PROJECTS', r)),
       shapes: shapes.map(r => dataToRow('USERSHAPES', r)),
       backgrounds: backgrounds.map(r => dataToRow('USERBKGS', r)),

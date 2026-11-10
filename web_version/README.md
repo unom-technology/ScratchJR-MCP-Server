@@ -13,8 +13,8 @@ It is the same ScratchJr as the desktop app: the build takes it straight from `.
 
 ## What students get
 
-- **Log in or create an account** with a username and password. Usernames are 3 to 24 letters or numbers (`.` `_` `-` allowed) and are not case sensitive; passwords need at least 4 characters.
-- **My Projects shows only their own work.** Nobody can see or change another student's projects.
+- **Log in or create an account.** Signing up asks for their full name, grade (1 to 12), a username and a password. Usernames are 3 to 24 letters or numbers (`.` `_` `-` allowed) and are not case sensitive; passwords need at least 4 characters. Their section starts empty: only an admin puts a student in one.
+- **My Projects shows only their own work.** No other student can see or change it. Their teachers and admins can look at it, but not change it (see [Teachers and admins](#teachers-and-admins)).
 - **Saving is automatic.** Every change goes to the server as it is made, and the editor saves the open project every 5 seconds while it is changing. The dot on the account button shows the state: green is saved, yellow is saving, red is "can't reach the server".
 - **If the network drops,** the work is kept in the browser and saves by itself when the server is back, including after moving to another page. It is also sent the next time the same student logs in on that computer.
 - **The account button** in the bottom-right corner has:
@@ -72,15 +72,47 @@ mkcert -cert-file certs/server.pem -key-file certs/server-key.pem 192.168.9.1 lo
 
 Then set `HTTPS_CERT=certs/server.pem`, `HTTPS_KEY=certs/server-key.pem` and `PORT=443` in `.env`. Each student device must trust mkcert's root certificate (`mkcert -CAROOT` shows where it is), or the browser will warn about the page.
 
+## Teachers and admins
+
+There are three kinds of account:
+
+| Role | Who makes it | What they can do |
+| --- | --- | --- |
+| Student | The student, on the login page, or an admin | Make their own projects |
+| Teacher | An admin | See the students in the sections they teach, and those students' projects |
+| Admin | An admin, or `npm run make-admin` on the server PC | See every student and project, and manage all accounts and sections |
+
+A **section** is one class, such as Grade 4 Trust. A teacher of Grade 4 Trust and Grade 3 Faithfulness sees the students in those two sections and nobody else. A student with no section yet is seen by admins only.
+
+**The first admin** is made on the server PC, after `npm run setup`:
+
+```
+npm run make-admin -- principal a-good-password
+```
+
+That creates the account `principal`, or turns an existing account into an admin with that password. Without a password, it turns an existing account into an admin and keeps its password. `npm run make-admin -- principal --remove` makes it a student again, and `npm run make-admin` on its own lists the admins. Nobody can make themselves a teacher or admin from the browser.
+
+Teachers and admins log in on the same login page and go to the **admin page** (`/admin`). It has these tabs:
+
+- **Students' projects:** the students they may see, by section, with their projects and pictures. Click a project to open it in ScratchJr, or **Open their project list** to see the student's whole My Projects screen.
+- **Accounts:**
+  - For admins: every account. Make student, teacher and admin accounts, change names, usernames and roles, give a new password (which logs that account out everywhere), set a student's grade and section, choose the sections a teacher teaches, and delete accounts. Deleting an account deletes its projects too.
+  - For teachers: the students in their sections, to look at only.
+- **Sections** (admins only): add sections for each grade, rename them, or delete them. Deleting a section deletes nobody's work; its students are left with no section until an admin gives them one.
+
+An admin can't change their own role or delete their own account, so there is always an admin left; another admin can.
+
+**Opening a student's project is look-only.** It opens exactly as the student last saved it: you can play it, look at every page and script, and download it with **Save project to computer**. Nothing you change is saved, either to the student or to your own projects. While you look, the account button turns purple and says **Viewing** and the student's name. **Back to admin page** in its menu ends it. If the student is working on the project right now, open it again to see their latest changes.
+
 ## For the teacher
 
-**A student forgot their password:**
+**A student forgot their password:** an admin gives them a new one under **Accounts > Edit**, or on the server PC:
 
 ```
 npm run reset-password -- student1 newpassword
 ```
 
-It also logs them out everywhere. Their projects are not touched.
+Either way they are logged out everywhere. Their projects are not touched.
 
 **Backups:** everything is in one file, `data/scratchjr-web.db`. Stop the server, copy the file, start it again. To restore, stop the server and put the copy back.
 
@@ -100,12 +132,14 @@ ScratchJr expects a tablet underneath it: it calls `window.tablet` synchronously
 - **Triggers note every row a statement changes,** and those rows go straight to `POST /api/sync`. Characters, backgrounds, thumbnails and recordings go the same way.
 - **The server never runs SQL from a browser.** It accepts only rows of ScratchJr's three tables with their known columns, and only for the logged-in student. Prisma keeps them in SQLite, keyed by student. Each page load gets its own block of row numbers, so two tabs cannot pick the same project number.
 - **Logins** use scrypt password hashes and an HttpOnly, SameSite cookie whose token is stored only as a hash. Repeated wrong passwords for one name are slowed down, and writes from other sites are refused.
+- **Roles are checked on the server for every request,** so a changed role or section takes effect at once. Which students a teacher may see is decided in one place, `server/access.js`. A student ID outside a teacher's sections answers as if there were no such student.
+- **Looking at a student's work** loads that student's tables into the page from `/api/admin/students/<id>/state`, read-only. While it does, the web tablet's save queue drops every change instead of sending it; a save would otherwise land in the viewer's own account. It also reserves none of the student's project numbers. The student's ID is kept in the tab's `sessionStorage`, because ScratchJr builds its own page addresses and drops anything added to them.
 
 | Path | What it is |
 | --- | --- |
-| `server/` | Express app, login and sessions (`auth.js`), the student's data (`store.js`), what a sync may contain (`tables.js`) |
+| `server/` | Express app, login and sessions (`auth.js`), the student's data (`store.js`), what a sync may contain (`tables.js`), who sees whom (`access.js`), the admin page's reading API (`admin.js`) and account and section management (`manage.js`) |
 | `prisma/` | Database schema and migrations |
 | `client/` | The web tablet, account button, microphone and camera, bundled into `public/app/web.js` |
-| `static/` | The login page |
-| `scripts/` | `build`, `setup` and `reset-password` |
+| `static/` | The login page and the admin page |
+| `scripts/` | `build`, `setup`, `reset-password` and `make-admin` |
 | `test/` | `npm test`: the API against a throwaway database |

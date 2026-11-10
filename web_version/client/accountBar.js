@@ -1,9 +1,10 @@
 // The student's button in the corner of every page: who is logged in, whether
 // their work has reached the server, saving a project to the computer, loading
-// one from it, and logging out.
+// one from it, and logging out. While an admin looks at a student's work it
+// says whose work it is, and that nothing is saved.
 
 import ScratchJr from '../../desktop/src/app/src/editor/ScratchJr.js';
-import { goToLogin } from './webTablet.js';
+import { goToLogin, stopViewing } from './webTablet.js';
 
 const STATUS = {
   saved: 'All changes saved',
@@ -29,10 +30,10 @@ function button(text, onClick) {
 }
 
 export function startAccountBar() {
-  window.addEventListener('sjr-ready', event => build(event.detail.user));
+  window.addEventListener('sjr-ready', event => build(event.detail));
 }
 
-function build(user) {
+function build({user, viewing}) {
   const page = window.scratchJrPage || 'index';
   const inEditor = page === 'editor';
 
@@ -46,8 +47,23 @@ function build(user) {
   const menu = element('div', 'sjr-web-menu');
   menu.hidden = true;
   const heading = element('div', 'sjr-web-heading');
-  heading.append('Logged in as ', element('strong', null, user.username));
+  heading.append('Logged in as ', element('strong', null, user.fullName || user.username));
+  // A student's class, or "No section yet" until an admin gives them one.
+  const details = [user.username];
+  if (user.role === 'student' && user.grade) details.push(user.section ? `Grade ${user.section.grade} ${user.section.name}` : `Grade ${user.grade} · No section yet`);
+  else if (user.role !== 'student') details.push(user.role === 'admin' ? 'Admin' : 'Teacher');
+  const sub = element('div', 'sjr-web-sub', details.join(' · '));
   const status = element('div', 'sjr-web-status', STATUS.saved);
+
+  if (viewing) {
+    const name = viewing.fullName || viewing.username;
+    root.classList.add('viewing');
+    pill.title = `You are looking at ${name}'s projects. Nothing you change is saved.`;
+    pill.replaceChildren(element('span', 'sjr-web-name', `Viewing ${name}`));
+    heading.replaceChildren('Viewing ', element('strong', null, name), '\'s projects');
+    sub.textContent = viewing.username;
+    status.textContent = 'Look only: nothing you change here is saved, to them or to you.';
+  }
 
   const exportButton = button('Save project to computer', () => {
     close();
@@ -76,7 +92,19 @@ function build(user) {
   const logoutButton = button('Log out', () => logout());
   logoutButton.classList.add('sjr-web-logout');
 
-  menu.append(heading, status, exportButton, importButton, logoutButton);
+  const staffPage = user.role === 'admin' ? 'Admin page' : 'Teacher page';
+  menu.append(heading, sub, status, exportButton);
+  if (viewing) {
+    menu.append(button(`Back to ${staffPage.toLowerCase()}`, stopViewing));
+  } else {
+    menu.append(importButton);
+    if (user.role !== 'student') {
+      menu.append(button(staffPage, () => {
+        window.location.href = '/admin';
+      }));
+    }
+  }
+  menu.append(logoutButton);
   const toast = element('div', 'sjr-web-toast');
   toast.hidden = true;
   root.append(toast, menu, pill, fileInput);
@@ -152,7 +180,7 @@ function build(user) {
     close();
     logoutButton.disabled = true;
     // Whatever is on the screen in the editor is saved first.
-    if (inEditor && ScratchJr.stage && ScratchJr.stage.currentPage) {
+    if (!viewing && inEditor && ScratchJr.stage && ScratchJr.stage.currentPage) {
       await new Promise(resolve => ScratchJr.saveProject(null, resolve));
     }
     const queue = window.tablet.queue;

@@ -68,6 +68,13 @@
   background: #e5484d;
 }
 
+/* An admin looking at a student's work: purple, so it is never taken for their own. */
+.sjr-web-account.viewing .sjr-web-pill {
+  max-width: 260px;
+  padding-left: 14px;
+  background: #7a5bd1;
+}
+
 .sjr-web-menu {
   width: 250px;
   padding: 12px;
@@ -85,8 +92,14 @@
   font-size: 15px;
 }
 
+.sjr-web-sub {
+  margin-top: 2px;
+  color: var(--sjr-muted);
+  font-size: 13px;
+}
+
 .sjr-web-status {
-  margin: 4px 0 10px;
+  margin: 6px 0 10px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--sjr-line);
   color: var(--sjr-muted);

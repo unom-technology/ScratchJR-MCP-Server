@@ -26,6 +26,42 @@ export function passwordProblem(password) {
   return null;
 }
 
+// Students sign up themselves; teachers and admins are made by an admin.
+// Teachers see the students in the sections they teach; admins see everyone
+// and manage accounts and sections.
+export const ROLES = ['student', 'teacher', 'admin'];
+export const isStaff = user => Boolean(user) && (user.role === 'teacher' || user.role === 'admin');
+
+const MAX_FULL_NAME = 80;
+const MAX_SECTION_NAME = 40;
+
+// Trimmed, with runs of spaces made one, so "Rafael  Bendigo " is "Rafael Bendigo".
+export function cleanText(value) {
+  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+}
+
+export function fullNameProblem(name) {
+  if (!name) return 'Type the full name.';
+  if (name.length > MAX_FULL_NAME) return `A full name can be up to ${MAX_FULL_NAME} letters.`;
+  return null;
+}
+
+// A grade as a form sends it, "4" or 4, as a number; anything else is NaN.
+export function toGrade(value) {
+  if (typeof value === 'number') return value;
+  return typeof value === 'string' && /^\s*\d{1,2}\s*$/.test(value) ? Number(value) : NaN;
+}
+
+export function gradeProblem(grade) {
+  return Number.isInteger(grade) && grade >= 1 && grade <= 12 ? null : 'Pick a grade, from Grade 1 to Grade 12.';
+}
+
+export function sectionNameProblem(name) {
+  if (!name) return 'Type the section\'s name, such as Trust.';
+  if (name.length > MAX_SECTION_NAME) return `A section's name can be up to ${MAX_SECTION_NAME} letters.`;
+  return null;
+}
+
 export async function hashPassword(password) {
   const salt = randomBytes(16);
   const key = await scrypt(password, salt, 64);

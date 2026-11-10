@@ -23,6 +23,31 @@ const SCHEMA = {
 
 const RETRY_MS = 5000;
 
+// An admin looking at a student's work in this tab: the student's ID. The admin
+// page passes it as ?student= on the first page; it is kept for the tab because
+// ScratchJr builds its own page addresses (editor.html?pmd5=..., home.html?place=...)
+// and drops anything else in them.
+const VIEWING_KEY = 'sjr-web-viewing';
+
+function viewingStudentId() {
+  const fromPage = new URLSearchParams(window.location.search).get('student');
+  let id = fromPage;
+  try {
+    if (fromPage) window.sessionStorage.setItem(VIEWING_KEY, fromPage);
+    else id = window.sessionStorage.getItem(VIEWING_KEY);
+  } catch (error) { /* storage blocked: only this page shows the student */ }
+  return /^\d{1,10}$/.test(id || '') ? id : null;
+}
+
+function forgetViewing() {
+  try { window.sessionStorage.removeItem(VIEWING_KEY); } catch (error) { /* storage blocked */ }
+}
+
+export function stopViewing() {
+  forgetViewing();
+  window.location.href = '/admin';
+}
+
 // ---------------------------------------------------------------- server calls
 
 class HttpError extends Error {
@@ -225,12 +250,43 @@ class SaveQueue {
   }
 }
 
+// The save queue while an admin looks at a student's work: changes stay in the
+// page and go with it. Nothing may be sent: /api/sync would take it as the
+// admin's own work, and replace the admin's project that has the same number.
+class DiscardQueue {
+  constructor() {
+    this.entries = new Map();
+    this.storeFailed = false;
+  }
+
+  get size() {
+    return 0;
+  }
+
+  addRow() {}
+
+  addFile() {}
+
+  flush() {
+    return true;
+  }
+
+  async flushInBackground() {
+    return true;
+  }
+
+  schedule() {}
+}
+
 // ---------------------------------------------------------------- the tablet
 
 class WebTablet {
-  constructor({SQL, state}) {
-    this.user = state.user;
-    this.queue = new SaveQueue(state.user.id);
+  // viewing is the student an admin is looking at, or null for one's own work.
+  constructor({SQL, user, state, viewing}) {
+    this.user = user;
+    this.viewing = viewing;
+    this.filesUrl = viewing ? `/api/admin/students/${viewing.id}/files/` : '/api/files/';
+    this.queue = viewing ? new DiscardQueue() : new SaveQueue(user.id);
     this.media = new Map(); // file name -> contents, for this page
     this.mediaChunks = {}; // ScratchJr reads big files in pieces
     this.currentAudio = {};
@@ -337,7 +393,7 @@ class WebTablet {
     if (this.media.has(name)) return this.media.get(name);
     let contents = null;
     try {
-      const xhr = request('GET', '/api/files/' + encodeURIComponent(name));
+      const xhr = request('GET', this.filesUrl + encodeURIComponent(name));
       if (xhr.status === 200) contents = xhr.responseText;
       else if (xhr.status === 401) goToLogin('expired');
     } catch (error) {
@@ -391,9 +447,10 @@ class WebTablet {
 
   // Tidies files nothing uses any more. Skipped while anything is still
   // waiting to be saved: the server would judge "unused" against rows it has
-  // not received yet, and could remove a file a new character needs.
+  // not received yet, and could remove a file a new character needs. Never
+  // while viewing a student: it would tidy the admin's own files instead.
   io_cleanassets(fileType) {
-    if (this.queue.size) return true;
+    if (this.viewing || this.queue.size) return true;
     try { requestJson('POST', '/api/files/clean', {type: fileType}); } catch (error) { console.warn('Cleaning files failed', error); }
     return true;
   }
@@ -409,7 +466,7 @@ class WebTablet {
   }
 
   fileKey(name) {
-    return `sjr-web-file-${this.user.id}-${name}`;
+    return `sjr-web-file-${this.viewing ? 'student' + this.viewing.id : this.user.id}-${name}`;
   }
 
   // A file shipped with the app: settings, the media library, help pages.
@@ -567,7 +624,8 @@ class WebTablet {
 
   // Shown as the author in a project's info box.
   deviceName() {
-    return this.user.username;
+    const person = this.viewing || this.user;
+    return person.fullName || person.username;
   }
 
   analyticsEvent() {}
@@ -621,6 +679,14 @@ export async function startTablet() {
     return showStartupError('The ScratchJr server could not be reached. Check the network, then try again.', () => window.location.reload());
   }
 
+  // Only teachers and admins look at a student's work (the server checks
+  // which students); a student always gets their own.
+  let studentId = viewingStudentId();
+  if (studentId && me.role === 'student') {
+    forgetViewing();
+    studentId = null;
+  }
+
   try {
     // Anything a previous page could not save goes first, so the data below
     // includes it. Whatever still fails stays in storage for the tablet's queue.
@@ -629,12 +695,15 @@ export async function startTablet() {
 
     const [SQL, state] = await Promise.all([
       window.initSqlJs({locateFile: file => 'lib/' + file}),
-      fetchJson('/api/state'),
+      fetchJson(studentId ? `/api/admin/students/${studentId}/state` : '/api/state'),
     ]);
-    window.tablet = new WebTablet({SQL, state});
-    emit('sjr-ready', {user: state.user});
+    const viewing = studentId ? state.student : null;
+    window.tablet = new WebTablet({SQL, user: me, state, viewing});
+    emit('sjr-ready', {user: me, viewing});
   } catch (error) {
     if (error.status === 401) return goToLogin();
+    // The student is gone or out of this teacher's sections, or the account is no longer staff.
+    if (studentId && (error.status === 403 || error.status === 404)) return stopViewing();
     console.error(error);
     showStartupError(error.message || 'Your projects could not be loaded.', () => window.location.reload());
   }

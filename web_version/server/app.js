@@ -3,14 +3,24 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   COOKIE, LoginLimiter, normalizeUsername, usernameProblem, passwordProblem, hashPassword, verifyPassword,
-  newToken, hashToken, readCookie, sessionCookie, clearedCookie,
+  newToken, hashToken, readCookie, sessionCookie, clearedCookie, cleanText, fullNameProblem, toGrade, gradeProblem, isStaff,
 } from './auth.js';
 import { Store, BadRequest } from './store.js';
 import { MAX_FILE_CHARS } from './tables.js';
+import { createAdminRouter } from './admin.js';
 
 // A scrypt hash of a random password, checked when the username does not
 // exist, so a wrong name takes as long to refuse as a wrong password.
 const NO_SUCH_USER = 'scrypt$AAAAAAAAAAAAAAAAAAAAAA==$' + Buffer.alloc(64).toString('base64');
+
+// What the browser is told about the account it is logged in as.
+const publicUser = user => ({
+  id: user.id, username: user.username, fullName: user.fullName, role: user.role, grade: user.grade,
+  section: user.section ? {id: user.section.id, grade: user.section.grade, name: user.section.name} : null,
+});
+
+// Where each kind of account starts after logging in.
+const homeFor = user => (isStaff(user) ? '/admin' : '/app/home.html');
 
 export function createApp({prisma, config}) {
   const store = new Store(prisma);
@@ -28,15 +38,18 @@ export function createApp({prisma, config}) {
     next();
   });
 
+  // The account this request is logged in as, read fresh each time, so a
+  // changed role or section counts from the next request. Notes the session on req.
   async function currentUser(req) {
     const token = readCookie(req.headers.cookie, COOKIE);
     if (!token) return null;
-    const session = await prisma.session.findUnique({where: {id: hashToken(token)}, include: {user: true}});
+    const session = await prisma.session.findUnique({where: {id: hashToken(token)}, include: {user: {include: {section: true}}}});
     if (!session) return null;
     if (session.expiresAt < new Date()) {
       await prisma.session.deleteMany({where: {id: session.id}});
       return null;
     }
+    req.sessionId = session.id;
     return session.user;
   }
 
@@ -69,29 +82,42 @@ export function createApp({prisma, config}) {
     next();
   };
 
+  // Teachers and admins; which students each may see is decided in access.js.
+  const requireStaff = (req, res, next) => {
+    if (!isStaff(req.user)) return res.status(403).json({error: 'Only teachers and admins can see this.'});
+    next();
+  };
+
+  // Signing up always makes a student. Their section stays empty until an
+  // admin puts them in one.
   api.post('/register', async (req, res) => {
     const username = normalizeUsername(req.body?.username);
     const password = req.body?.password;
-    const problem = usernameProblem(username) || passwordProblem(password);
+    const fullName = cleanText(req.body?.fullName);
+    const grade = toGrade(req.body?.grade);
+    const problem = fullNameProblem(fullName) || gradeProblem(grade) || usernameProblem(username) || passwordProblem(password);
     if (problem) return res.status(400).json({error: problem});
     if (await prisma.user.findUnique({where: {username}})) return res.status(409).json({error: 'That username is taken. Try another one, or log in.'});
     let user;
     try {
-      user = await prisma.user.create({data: {username, passwordHash: await hashPassword(password), lastLoginAt: new Date()}});
+      user = await prisma.user.create({
+        data: {username, fullName, grade, role: 'student', passwordHash: await hashPassword(password), lastLoginAt: new Date()},
+        include: {section: true},
+      });
     } catch (error) {
       // Two students registering the same name at the same moment.
       if (error.code === 'P2002') return res.status(409).json({error: 'That username is taken. Try another one, or log in.'});
       throw error;
     }
     await startSession(res, user);
-    res.status(201).json({username: user.username});
+    res.status(201).json(publicUser(user));
   });
 
   api.post('/login', async (req, res) => {
     const username = normalizeUsername(req.body?.username);
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (limiter.blocked(req.ip, username)) return res.status(429).json({error: 'Too many wrong tries. Wait a few minutes, or ask your teacher.'});
-    const user = username ? await prisma.user.findUnique({where: {username}}) : null;
+    const user = username ? await prisma.user.findUnique({where: {username}, include: {section: true}}) : null;
     const ok = await verifyPassword(password, user ? user.passwordHash : NO_SUCH_USER);
     if (!user || !ok) {
       limiter.failed(req.ip, username);
@@ -100,7 +126,7 @@ export function createApp({prisma, config}) {
     limiter.succeeded(req.ip, username);
     await prisma.user.update({where: {id: user.id}, data: {lastLoginAt: new Date()}});
     await startSession(res, user);
-    res.json({username: user.username});
+    res.json(publicUser(user));
   });
 
   api.post('/logout', async (req, res) => {
@@ -111,11 +137,11 @@ export function createApp({prisma, config}) {
   });
 
   api.get('/me', requireUser, (req, res) => {
-    res.json({id: req.user.id, username: req.user.username});
+    res.json(publicUser(req.user));
   });
 
   api.get('/state', requireUser, async (req, res) => {
-    res.json({user: {id: req.user.id, username: req.user.username}, ...await store.state(req.user.id)});
+    res.json({user: publicUser(req.user), ...await store.state(req.user.id)});
   });
 
   api.post('/sync', requireUser, async (req, res) => {
@@ -132,14 +158,25 @@ export function createApp({prisma, config}) {
     res.json(await store.clean(req.user.id, req.body?.type));
   });
 
+  api.use('/admin', requireUser, requireStaff, createAdminRouter({prisma, store}));
+
   api.use((req, res) => res.status(404).json({error: 'No such API.'}));
 
   app.use('/api', api);
 
   app.get('/', async (req, res) => {
-    res.redirect((await currentUser(req)) ? '/app/home.html' : '/login');
+    const user = await currentUser(req);
+    res.redirect(user ? homeFor(user) : '/login');
   });
   app.get('/login', (req, res) => res.sendFile(join(config.staticDir, 'login.html')));
+  // The admin page, for teachers too: it shows each what their role allows.
+  app.get('/admin', async (req, res) => {
+    const user = await currentUser(req);
+    if (!user) return res.redirect('/login');
+    if (!isStaff(user)) return res.redirect('/app/home.html');
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(join(config.staticDir, 'admin.html'));
+  });
   app.get('/favicon.ico', (req, res) => {
     const icon = join(config.appDir, 'favicon.ico');
     if (existsSync(icon)) res.sendFile(icon);
@@ -160,7 +197,8 @@ export function createApp({prisma, config}) {
   }
 
   app.use((error, req, res, next) => { // eslint-disable-line no-unused-vars
-    if (error instanceof BadRequest || error.type === 'entity.parse.failed') return res.status(400).json({error: error.message});
+    if (error instanceof BadRequest) return res.status(error.status).json({error: error.message});
+    if (error.type === 'entity.parse.failed') return res.status(400).json({error: error.message});
     if (error.type === 'entity.too.large') return res.status(413).json({error: 'That is too big to save.'});
     console.error(error);
     res.status(500).json({error: 'Something went wrong on the server.'});

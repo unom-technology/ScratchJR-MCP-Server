@@ -12,6 +12,7 @@
     "build": "node scripts/build.mjs",
     "start": "node server/index.js",
     "reset-password": "node scripts/reset-password.mjs",
+    "make-admin": "node scripts/make-admin.mjs",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

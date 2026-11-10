@@ -19,6 +19,18 @@ model User {
   // Stored lower case; logging in is not case sensitive.
   username     String       @unique
   passwordHash String
+  // "student", "teacher" or "admin". Signing up makes a student; only an admin,
+  // or `npm run make-admin` on the server, makes teachers and admins.
+  role         String       @default("student")
+  // Asked for at sign-up. Accounts made before that have none until an admin adds it.
+  fullName     String?
+  // Students: 1 to 12, chosen at sign-up.
+  grade        Int?
+  // Students: their class. Only an admin sets it, never the student.
+  sectionId    Int?
+  section      Section?     @relation("StudentSection", fields: [sectionId], references: [id], onDelete: SetNull)
+  // Teachers: the sections whose students and projects they can see.
+  teaching     Section[]    @relation("TeacherSections")
   createdAt    DateTime     @default(now())
   lastLoginAt  DateTime?
   // Next free block of ScratchJr IDs; see reserveIdBlock in server/store.js.
@@ -28,6 +40,21 @@ model User {
   shapes       Shape[]
   backgrounds  Background[]
   files        MediaFile[]
+
+  @@index([sectionId])
+}
+
+// A class, such as Grade 4 Trust. Admins make them, put students in them and
+// give teachers the ones they teach.
+model Section {
+  id        Int      @id @default(autoincrement())
+  grade     Int
+  name      String
+  createdAt DateTime @default(now())
+  students  User[]   @relation("StudentSection")
+  teachers  User[]   @relation("TeacherSections")
+
+  @@unique([grade, name])
 }
 
 model Session {

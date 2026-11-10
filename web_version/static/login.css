@@ -76,18 +76,27 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   padding: 12px 14px;
   border: 2px solid var(--line);
   border-radius: 12px;
+  background: #fff;
   font: inherit;
   color: inherit;
 }
 
-input:focus {
+input:focus,
+select:focus {
   outline: none;
   border-color: var(--blue);
+}
+
+.field-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .go {
